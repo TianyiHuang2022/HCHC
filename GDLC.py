@@ -271,7 +271,7 @@ def train_GDLC():
             optimizer.step()
 
     output_f = tmp_q.cpu().numpy()
-    np.save('embedded_MNIST'+str(epoch)+'.npy', output_f)
+    np.save('embedded_MNIST.npy', output_f)
 
 
 
