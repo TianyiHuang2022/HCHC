@@ -54,7 +54,7 @@ class AE(nn.Module):
         return x_bar, z
 
 
-class GDLC(nn.Module):
+class GLDC(nn.Module):
 
     def __init__(self,
                  n_enc_1,
@@ -68,7 +68,7 @@ class GDLC(nn.Module):
                  n_clusters,
                  alpha=1,
                  pretrain_path='data/ae_mnist.pkl'):
-        super(GDLC, self).__init__()
+        super(GLDC, self).__init__()
         self.alpha = 1.0
         self.pretrain_path = pretrain_path
 
@@ -154,9 +154,9 @@ def pretrain_ae(model):
 
 
 
-def train_GDLC():
+def train_GLDC():
 
-    model = GDLC(
+    model = GLDC(
         n_enc_1=500,
         n_enc_2=500,
         n_enc_3=2000,
@@ -313,4 +313,4 @@ if __name__ == "__main__":
     np.save('Mnist_y.npy', Y)
 
     print(args)
-    train_GDLC()
+    train_GLDC()
