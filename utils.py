@@ -38,14 +38,6 @@ def load_fashion(path='./data/fashion.npz'):
     y = data["arr_1"]
     return x, y
 
-def load_USA(path='./data/USA.npz'):
-    data = np.load(path)
-    x = np.float32(data["X"])
-    y = np.float32(data["Y"])
-    x = maxmin_norm(x)
-    return x, y
-
-
 class MnistDataset(Dataset):
 
     def __init__(self):
