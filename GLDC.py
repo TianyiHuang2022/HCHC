@@ -310,7 +310,6 @@ if __name__ == "__main__":
     args.n_input = 784
     dataset = MnistDataset()
     Y = dataset.y
-    np.save('Mnist_y.npy', Y)
 
     print(args)
     train_GLDC()
