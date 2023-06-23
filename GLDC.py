@@ -205,6 +205,7 @@ def train_GLDC():
     n_neighbors = args.n_neighbors
     bate1 = args.beta1
     bate2 = args.beta2
+    beta3 = args.beta3
     gamma = args.gamma_l
     for epoch in range(200):
 
@@ -263,7 +264,7 @@ def train_GLDC():
             lossc = F.mse_loss(qn, q)
             idx = idx.long()
             kl_loss = F.kl_div(q.log(), p[idx])
-            loss = reconstr_loss + m_loss + lossc * bate2 +0.001*kl_loss
+            loss = reconstr_loss + m_loss + lossc * bate2 +beta3*kl_loss
 
 
             optimizer.zero_grad()
@@ -299,6 +300,7 @@ if __name__ == "__main__":
     parser.add_argument('--beta1', default=5, type=float)
     parser.add_argument('--gamma_l', default=0.8, type=float)
     parser.add_argument('--beta2', default=10, type=float)
+    parser.add_argument('--beta3', default=0.001, type=float)
     parser.add_argument('--epsilon', default=0.25, type=float)
 
     args = parser.parse_args()
