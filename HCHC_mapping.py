@@ -5,14 +5,6 @@ import matplotlib.pyplot as pyplot
 from utils import MnistDataset
 
 
-
-
-
-
-
-
-
-
 data = np.load('embedded_MNIST.npy')
 dataset = MnistDataset()
 Y = dataset.y
