@@ -11,8 +11,6 @@ Y = dataset.y
 nx = len(Y)
 n_clu = len(np.unique(Y))
 
-corr = np.corrcoef(data.T)
-vertex = (1-corr)/2
 
 def DGBC(data):
     m, n = data.shape[0], data.shape[1]
