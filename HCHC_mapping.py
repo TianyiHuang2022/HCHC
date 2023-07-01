@@ -82,7 +82,6 @@ def getShortestHamiltonianCycle(dist):
         order[i] = bj
         cur ^= 1 << bj
         last = bj
-        #order = [3,7,6,0,1,8,4,9,5,2]
     return order
 
 def shift(order, num):
