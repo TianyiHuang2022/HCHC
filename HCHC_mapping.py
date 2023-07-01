@@ -98,8 +98,6 @@ def shift(order, num):
 
 GBCLocation, order = DGBC(data)
 pyplot.rcParams['savefig.dpi'] = 600
-aa = GBCLocation[:,0]
-bb = GBCLocation[:,1]
 a = GBCLocation[0:nx,0]
 b = GBCLocation[0:nx,1]
 ax = GBCLocation[nx:nx+n_clu,0]
@@ -108,15 +106,8 @@ bx = GBCLocation[nx:nx+n_clu,1]
 
 theta = np.linspace(0, 2 * np.pi, 200)
 
-
-
-
 x = np.cos(theta)
 y = np.sin(theta)
-
-
-
-
 
 df = DataFrame(dict(x=a, y=b, label=Y))
 colors = {0: 'grey', 1: 'blue', 2: 'green',  3: 'purple', 4: 'cyan', 5: 'olive', 6: 'darkblue', 7: 'deeppink',  8: 'orange',9: 'darkcyan'}
