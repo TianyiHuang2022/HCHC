@@ -297,7 +297,7 @@ if __name__ == "__main__":
         help='coefficient of clustering loss')
     parser.add_argument('--update_interval', default=1, type=int)
     parser.add_argument('--tol', default=0.001, type=float)
-    parser.add_argument('--n_neighbors', default=11, type=float)
+    parser.add_argument('--n_neighbors', default=5, type=float)
     parser.add_argument('--beta1', default=5, type=float)
     parser.add_argument('--gamma_l', default=0.8, type=float)
     parser.add_argument('--beta2', default=10, type=float)
