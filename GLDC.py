@@ -264,7 +264,8 @@ def train_GLDC():
             lossc = F.mse_loss(qn, q)
             idx = idx.long()
             kl_loss = F.kl_div(q.log(), p[idx])
-            loss = reconstr_loss + m_loss + lossc * bate2 +beta3*kl_loss
+            loss = reconstr_loss + m_loss + lossc * bate2 
+		#+beta3*kl_loss
 
 
             optimizer.zero_grad()
