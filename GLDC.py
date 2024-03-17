@@ -247,7 +247,7 @@ def train_GLDC():
             feat_detach = hidden.detach()
             feat_row, feat_col = PairEnum(feat_detach)
             tmp_distance_ori = ((feat_row - feat_col) ** 2.).sum(1).view(x.size(0), x.size(0))
-            tmp_distance_ori = CKROD(tmp_distance_ori, 20)
+            #tmp_distance_ori = CKROD(tmp_distance_ori, 20)
             tmp_distance_ori = tmp_distance_ori.cpu().float()
             target_ulb = torch.zeros_like(tmp_distance_ori).float()
             target_ulb[tmp_distance_ori < torch.kthvalue(tmp_distance_ori, n_neighbors, 0, True)[0]] = 1
@@ -264,8 +264,7 @@ def train_GLDC():
             lossc = F.mse_loss(qn, q)
             idx = idx.long()
             kl_loss = F.kl_div(q.log(), p[idx])
-            loss = reconstr_loss + m_loss + lossc * bate2 
-		#+beta3*kl_loss
+            loss = reconstr_loss + m_loss + lossc * bate2
 
 
             optimizer.zero_grad()
