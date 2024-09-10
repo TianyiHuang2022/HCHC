@@ -18,7 +18,7 @@ def DGBC(data):
     vertex = (1-corr)/2
     dimorder = getShortestHamiltonianCycle(vertex)
     dimorder = shift(dimorder, 7)
-    dimorder = dimorder.astype(np.int)
+    dimorder = dimorder.astype(np.int32)
     sumcorr = 0
     corr = np.zeros(n)
     for i in range(n-1):
