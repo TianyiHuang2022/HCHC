@@ -1,3 +1,4 @@
+
 from __future__ import print_function, division
 import argparse
 import numpy as np
@@ -8,12 +9,23 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
+import torch.optim as optim
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.nn import Linear
-from utils import MnistDataset
-
+from utils import  fashionDataset
 from utils_algo import PairEnum, BCE_softlabels, cluster_acc
+
+def weight_init(m):
+    if isinstance(m, nn.Linear):
+        nn.init.sparse_(m.weight.data, sparsity=0.9)
+        if hasattr(m.bias, 'data'):
+            m.bias.data.fill_(0.0)
+    elif isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+        gain = nn.init.calculate_gain('relu')
+        nn.init.orthogonal_(m.weight.data, gain)
+        if hasattr(m.bias, 'data'):
+            m.bias.data.fill_(0.0)
 
 
 class AE(nn.Module):
@@ -35,6 +47,8 @@ class AE(nn.Module):
         self.dec_3 = Linear(n_dec_2, n_dec_3)
 
         self.x_bar_layer = Linear(n_dec_3, n_input)
+
+        self.apply(weight_init)
 
     def forward(self, x):
 
@@ -67,7 +81,7 @@ class GLDC(nn.Module):
                  n_z,
                  n_clusters,
                  alpha=1,
-                 pretrain_path='data/ae_mnist.pkl'):
+                 pretrain_path='data/ae_fashion.pkl'):
         super(GLDC, self).__init__()
         self.alpha = 1.0
         self.pretrain_path = pretrain_path
@@ -106,19 +120,19 @@ class GLDC(nn.Module):
 
 
 def add_noise(img):
-	noise = torch.randn(img.size()) * args.epsilon
+	noise = torch.randn(img.size()) * 0.2
 	noisy_img = img + noise
-	return noisy_img, noise
+	return noisy_img
 
 def target_distribution(q):
     weight = q**2 / q.sum(0)
     return (weight.t() / weight.sum(1)).t()
 
-def CKROD(Dist, sigma): # An effective keneral rank-order similarity measure
+def CKROD(Dist, sigma):
     Dist = Dist.cpu()
     Dist = Dist / Dist.max()
     Rank = Dist.argsort().argsort()
-    Rdist = Rank + Rank.t() + 1
+    Rdist = Rank + Rank.t()+1
     KROD = Rdist.float() * torch.exp(Dist / sigma)
     return KROD
 
@@ -129,13 +143,8 @@ def pretrain_ae(model):
     '''
     train_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
     print(model)
-    optimizer = Adam(model.parameters(), lr=0.002)
-    pretrain = args.pretrain
-    if pretrain:
-        n_p = 30
-    else:
-        n_p = 0
-    for epoch in range(n_p):
+    optimizer = Adam(model.parameters(), lr=args.lr)
+    for epoch in range(0):
         total_loss = 0.
         for batch_idx, (x, _, _) in enumerate(train_loader):
             x = x.to(device)
@@ -154,6 +163,7 @@ def pretrain_ae(model):
 
 
 
+
 def train_GLDC():
 
     model = GLDC(
@@ -169,21 +179,15 @@ def train_GLDC():
         alpha=1.0,
         pretrain_path=args.pretrain_path).to(device)
 
-    #  model.pretrain('data/ae_mnist.pkl')
     model.pretrain()
-
-
-
-
 
     bce = BCE_softlabels()
 
     train_loader = DataLoader(
-        dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=2)
+        dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
+    optimizer = Adam(model.parameters(), lr=args.lr)
+    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 100], gamma=0.5)
 
-    optimizer = Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))
-
-    # cluster parameter initiate
     data = dataset.x
     y = dataset.y
 
@@ -192,23 +196,17 @@ def train_GLDC():
     data = torch.Tensor(data).to(device)
     x_bar, hidden = model.ae(data)
 
-    kmeans = KMeans(n_clusters=args.n_clusters, random_state=0)
+    kmeans = KMeans(n_clusters=args.n_clusters, random_state=0,n_init=30)
     y_pred = kmeans.fit_predict(hidden.data.cpu().numpy())
-    nmi_k = nmi_score(y_pred, y)
-    print("nmi score={:.4f}".format(nmi_k))
 
 
     y_pred_last = y_pred
     model.cluster_layer.data = torch.tensor(kmeans.cluster_centers_).to(device)
 
     model.train()
-    n_neighbors = args.n_neighbors
-    bate1 = args.beta1
-    bate2 = args.beta2
-    beta3 = args.beta3
-    gamma = args.gamma_l
-    for epoch in range(200):
 
+
+    for epoch in range(20):
         if epoch % args.update_interval == 0:
 
             _, tmp_q,_ = model(data)
@@ -219,9 +217,6 @@ def train_GLDC():
 
             # evaluate clustering performance
             y_pred = tmp_q.cpu().numpy().argmax(1)
-            delta_label = np.sum(y_pred != y_pred_last).astype(
-                np.float32) / y_pred.shape[0]
-            y_pred_last = y_pred
 
             acc = cluster_acc(y, y_pred)
             nmi = nmi_score(y, y_pred)
@@ -229,53 +224,50 @@ def train_GLDC():
             print('Iter {}'.format(epoch), ':Acc {:.4f}'.format(acc),
                   ', nmi {:.4f}'.format(nmi), ', ari {:.4f}'.format(ari))
 
-
         for batch_idx, (x, _, idx) in enumerate(train_loader):
 
 
 
-            xn, added_noise = add_noise(x)
+            xn = add_noise(x)
             xn = xn.to(device)
             x = x.to(device)
+            idx = idx.to(device)
 
             x_bar, q, _ = model(x)
             xn_bar, qn, _ = model(xn)
             _, hidden = model.ae(x)
 
-
-
-            feat_detach = hidden.detach()
+            feat_detach = x.detach()
             feat_row, feat_col = PairEnum(feat_detach)
             tmp_distance_ori = ((feat_row - feat_col) ** 2.).sum(1).view(x.size(0), x.size(0))
-            #tmp_distance_ori = CKROD(tmp_distance_ori, 20)
+            tmp_distance_ori = CKROD(tmp_distance_ori, 10)
             tmp_distance_ori = tmp_distance_ori.cpu().float()
             target_ulb = torch.zeros_like(tmp_distance_ori).float()
-            target_ulb[tmp_distance_ori < torch.kthvalue(tmp_distance_ori, n_neighbors, 0, True)[0]] = 1
-            target_ulb = target_ulb.mul(torch.exp(-0.1*tmp_distance_ori))
+            target_ulb[tmp_distance_ori < torch.kthvalue(tmp_distance_ori, 7, 0, True)[0]] = 1
+            target_ulb = target_ulb.mul(torch.exp(-0.2*tmp_distance_ori))
             target_ulb = target_ulb.view(-1)
 
             prob_bottleneck_row, prob_bottleneck_col = PairEnum(q)
             m_loss = bce(prob_bottleneck_row, prob_bottleneck_col, target_ulb)
-            m_loss = max(bate1*gamma**epoch, 0.8)*m_loss
+            m_loss = max(5*0.9**epoch, 2)*m_loss
             m_loss = m_loss.cuda()
+
+
 
 
             reconstr_loss = F.mse_loss(x_bar, x)
             lossc = F.mse_loss(qn, q)
             idx = idx.long()
-            kl_loss = F.kl_div(q.log(), p[idx])
-            loss = reconstr_loss + m_loss + lossc * bate2
-		#+ bate3 * kl_loss
+            kl_loss = F.kl_div(q.log(), p[idx],reduction='batchmean')
+            loss = reconstr_loss + m_loss + lossc * 10 + 0.01 * kl_loss
 
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-
+        scheduler.step()
     output_f = tmp_q.cpu().numpy()
-    np.save('embedded_MNIST.npy', output_f)
-
-
+    np.save('embedded_fashion.npy', output_f)
 
 if __name__ == "__main__":
 
@@ -283,13 +275,11 @@ if __name__ == "__main__":
         description='train',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument('--lr', type=float, default=0.002)
-    parser.add_argument('--pretrain', type=bool, default=False)
+    parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--n_clusters', default=10, type=int)
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--n_z', default=5, type=int)
-    parser.add_argument('--dataset', type=str, default='mnist')
-    parser.add_argument('--pretrain_path', type=str, default='data/ae_mnist.pkl')
+    parser.add_argument('--pretrain_path', type=str, default='data/ae_fashion.pkl')
     parser.add_argument(
         '--gamma',
         default=0.1,
@@ -297,13 +287,6 @@ if __name__ == "__main__":
         help='coefficient of clustering loss')
     parser.add_argument('--update_interval', default=1, type=int)
     parser.add_argument('--tol', default=0.001, type=float)
-    parser.add_argument('--n_neighbors', default=5, type=float)
-    parser.add_argument('--beta1', default=5, type=float)
-    parser.add_argument('--gamma_l', default=0.8, type=float)
-    parser.add_argument('--beta2', default=10, type=float)
-    parser.add_argument('--beta3', default=0.001, type=float)
-    parser.add_argument('--epsilon', default=0.25, type=float)
-
     args = parser.parse_args()
     args.cuda = torch.cuda.is_available()
     print("use cuda: {}".format(args.cuda))
@@ -311,7 +294,7 @@ if __name__ == "__main__":
 
     args.n_clusters = 10
     args.n_input = 784
-    dataset = MnistDataset()
+    dataset = fashionDataset()
 
     print(args)
     train_GLDC()
