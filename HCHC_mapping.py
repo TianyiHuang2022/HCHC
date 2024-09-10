@@ -2,11 +2,11 @@ import numpy as np
 import math
 from pandas import DataFrame
 import matplotlib.pyplot as pyplot
-from utils import MnistDataset
+from utils import fashionDataset
 
 
-data = np.load('embedded_MNIST.npy')
-dataset = MnistDataset()
+data = np.load('embedded_fashion.npy')
+dataset = fashionDataset()
 Y = dataset.y
 nx = len(Y)
 n_clu = len(np.unique(Y))
