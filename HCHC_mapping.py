@@ -120,6 +120,6 @@ pyplot.axis('equal')
 pyplot.axis('off')
 
 fig.set_size_inches(5, 5)
-pyplot.savefig('MNIST.jpg',bbox_inches='tight', dpi=300, pad_inches=0)
+pyplot.savefig('Fashion.jpg',bbox_inches='tight', dpi=300, pad_inches=0)
 pyplot.show()
 
