@@ -1,4 +1,3 @@
-
 from __future__ import print_function, division
 import argparse
 import numpy as np
@@ -13,8 +12,10 @@ import torch.optim as optim
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.nn import Linear
-from utils import  fashionDataset
+import matplotlib.pyplot as pyplot
+from utils import fashionDataset
 from utils_algo import PairEnum, BCE_softlabels, cluster_acc
+
 
 def weight_init(m):
     if isinstance(m, nn.Linear):
@@ -68,7 +69,7 @@ class AE(nn.Module):
         return x_bar, z
 
 
-class GLDC(nn.Module):
+class IDEC(nn.Module):
 
     def __init__(self,
                  n_enc_1,
@@ -82,7 +83,7 @@ class GLDC(nn.Module):
                  n_clusters,
                  alpha=1,
                  pretrain_path='data/ae_fashion.pkl'):
-        super(GLDC, self).__init__()
+        super(IDEC, self).__init__()
         self.alpha = 1.0
         self.pretrain_path = pretrain_path
 
@@ -118,7 +119,6 @@ class GLDC(nn.Module):
         return x_bar, q, center
 
 
-
 def add_noise(img):
 	noise = torch.randn(img.size()) * 0.2
 	noisy_img = img + noise
@@ -133,6 +133,7 @@ def CKROD(Dist, sigma):
     Dist = Dist / Dist.max()
     Rank = Dist.argsort().argsort()
     Rdist = Rank + Rank.t()+1
+    #Rdist = Rdist / Rdist.max()
     KROD = Rdist.float() * torch.exp(Dist / sigma)
     return KROD
 
@@ -163,10 +164,16 @@ def pretrain_ae(model):
 
 
 
+def adjust_learning_rate(optimizer, epoch):
+    lr = args.lr * (0.5 ** (epoch // 50))
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
 
-def train_GLDC():
 
-    model = GLDC(
+
+def train_idec():
+
+    model = IDEC(
         n_enc_1=500,
         n_enc_2=500,
         n_enc_3=2000,
@@ -179,6 +186,7 @@ def train_GLDC():
         alpha=1.0,
         pretrain_path=args.pretrain_path).to(device)
 
+    #  model.pretrain('data/ae_mnist.pkl')
     model.pretrain()
 
     bce = BCE_softlabels()
@@ -187,7 +195,7 @@ def train_GLDC():
         dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
     optimizer = Adam(model.parameters(), lr=args.lr)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 100], gamma=0.5)
-
+    # cluster parameter initiate
     data = dataset.x
     y = dataset.y
 
@@ -196,17 +204,22 @@ def train_GLDC():
     data = torch.Tensor(data).to(device)
     x_bar, hidden = model.ae(data)
 
-    kmeans = KMeans(n_clusters=args.n_clusters, random_state=0,n_init=30)
+    kmeans = KMeans(n_clusters=args.n_clusters, random_state=0, n_init='auto')
     y_pred = kmeans.fit_predict(hidden.data.cpu().numpy())
+    nmi_k = nmi_score(y_pred, y)
+    print("nmi score={:.4f}".format(nmi_k))
 
+    hidden = None
+    x_bar = None
 
     y_pred_last = y_pred
     model.cluster_layer.data = torch.tensor(kmeans.cluster_centers_).to(device)
 
     model.train()
-
-
-    for epoch in range(20):
+    bate = 5
+    m = 0.8
+    for epoch in range(50):
+        #adjust_learning_rate(optimizer, epoch)
         if epoch % args.update_interval == 0:
 
             _, tmp_q,_ = model(data)
@@ -217,13 +230,15 @@ def train_GLDC():
 
             # evaluate clustering performance
             y_pred = tmp_q.cpu().numpy().argmax(1)
+            delta_label = np.sum(y_pred != y_pred_last).astype(
+                np.float32) / y_pred.shape[0]
+            y_pred_last = y_pred
 
             acc = cluster_acc(y, y_pred)
             nmi = nmi_score(y, y_pred)
             ari = ari_score(y, y_pred)
             print('Iter {}'.format(epoch), ':Acc {:.4f}'.format(acc),
                   ', nmi {:.4f}'.format(nmi), ', ari {:.4f}'.format(ari))
-
         for batch_idx, (x, _, idx) in enumerate(train_loader):
 
 
@@ -237,19 +252,19 @@ def train_GLDC():
             xn_bar, qn, _ = model(xn)
             _, hidden = model.ae(x)
 
-            feat_detach = x.detach()
+            feat_detach = hidden.detach()
             feat_row, feat_col = PairEnum(feat_detach)
             tmp_distance_ori = ((feat_row - feat_col) ** 2.).sum(1).view(x.size(0), x.size(0))
             tmp_distance_ori = CKROD(tmp_distance_ori, 10)
             tmp_distance_ori = tmp_distance_ori.cpu().float()
             target_ulb = torch.zeros_like(tmp_distance_ori).float()
-            target_ulb[tmp_distance_ori < torch.kthvalue(tmp_distance_ori, 7, 0, True)[0]] = 1
+            target_ulb[tmp_distance_ori < torch.kthvalue(tmp_distance_ori, 15, 0, True)[0]] = 1
             target_ulb = target_ulb.mul(torch.exp(-0.2*tmp_distance_ori))
             target_ulb = target_ulb.view(-1)
 
             prob_bottleneck_row, prob_bottleneck_col = PairEnum(q)
             m_loss = bce(prob_bottleneck_row, prob_bottleneck_col, target_ulb)
-            m_loss = max(5*0.9**epoch, 2)*m_loss
+            m_loss = max(bate*m**epoch,0.2)*m_loss
             m_loss = m_loss.cuda()
 
 
@@ -259,7 +274,7 @@ def train_GLDC():
             lossc = F.mse_loss(qn, q)
             idx = idx.long()
             kl_loss = F.kl_div(q.log(), p[idx],reduction='batchmean')
-            loss = reconstr_loss + m_loss + lossc * 10 + 0.01 * kl_loss
+            loss = reconstr_loss + m_loss + lossc * 10 + 0.001 * kl_loss
 
 
             optimizer.zero_grad()
@@ -268,6 +283,22 @@ def train_GLDC():
         scheduler.step()
     output_f = tmp_q.cpu().numpy()
     np.save('embedded_fashion.npy', output_f)
+    _, hidden = model.ae(data)
+    hidden = hidden.cpu()
+    hidden = hidden.detach().numpy()
+    _x_bar, _q, center = model(data)
+
+    fig, axx = pyplot.subplots()
+    shape = pca_f.shape
+    shape = shape[0]
+    pyplot.scatter(pca_f[:, 0], pca_f[:, 1], c='#1f77b4', s=0.02, marker='h')
+    pyplot.scatter(pca_f[shape - args.n_clusters:shape, 0], pca_f[shape - args.n_clusters:shape, 1], c='r', s=10,
+                   marker='h')
+
+    fig.set_size_inches(5, 5)
+    pyplot.axis('equal')
+    pyplot.axis('off')
+    pyplot.show()
 
 if __name__ == "__main__":
 
@@ -279,6 +310,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_clusters', default=10, type=int)
     parser.add_argument('--batch_size', default=128, type=int)
     parser.add_argument('--n_z', default=5, type=int)
+    parser.add_argument('--dataset', type=str, default='mnist')
     parser.add_argument('--pretrain_path', type=str, default='data/ae_fashion.pkl')
     parser.add_argument(
         '--gamma',
@@ -292,9 +324,11 @@ if __name__ == "__main__":
     print("use cuda: {}".format(args.cuda))
     device = torch.device("cuda" if args.cuda else "cpu")
 
-    args.n_clusters = 10
     args.n_input = 784
     dataset = fashionDataset()
+    Y = dataset.y
+    np.save('fashion_y.npy', Y)
+
 
     print(args)
-    train_GLDC()
+    train_idec()
