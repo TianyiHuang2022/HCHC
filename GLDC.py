@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from torch.nn import Linear
 import matplotlib.pyplot as pyplot
 from utils import fashionDataset
+from sklearn.decomposition import PCA
 from utils_algo import PairEnum, BCE_softlabels, cluster_acc
 
 
@@ -218,7 +219,7 @@ def train_idec():
     model.train()
     bate = 5
     m = 0.8
-    for epoch in range(50):
+    for epoch in range(20):
         #adjust_learning_rate(optimizer, epoch)
         if epoch % args.update_interval == 0:
 
@@ -258,7 +259,7 @@ def train_idec():
             tmp_distance_ori = CKROD(tmp_distance_ori, 10)
             tmp_distance_ori = tmp_distance_ori.cpu().float()
             target_ulb = torch.zeros_like(tmp_distance_ori).float()
-            target_ulb[tmp_distance_ori < torch.kthvalue(tmp_distance_ori, 15, 0, True)[0]] = 1
+            target_ulb[tmp_distance_ori < torch.kthvalue(tmp_distance_ori, 12, 0, True)[0]] = 1
             target_ulb = target_ulb.mul(torch.exp(-0.2*tmp_distance_ori))
             target_ulb = target_ulb.view(-1)
 
@@ -287,18 +288,11 @@ def train_idec():
     hidden = hidden.cpu()
     hidden = hidden.detach().numpy()
     _x_bar, _q, center = model(data)
+    center = center.cpu()
+    center = center.detach().numpy()
+    np.save('embedded_fashionz.npy', hidden)
+    np.save('center_fashion.npy', center)
 
-    fig, axx = pyplot.subplots()
-    shape = pca_f.shape
-    shape = shape[0]
-    pyplot.scatter(pca_f[:, 0], pca_f[:, 1], c='#1f77b4', s=0.02, marker='h')
-    pyplot.scatter(pca_f[shape - args.n_clusters:shape, 0], pca_f[shape - args.n_clusters:shape, 1], c='r', s=10,
-                   marker='h')
-
-    fig.set_size_inches(5, 5)
-    pyplot.axis('equal')
-    pyplot.axis('off')
-    pyplot.show()
 
 if __name__ == "__main__":
 
